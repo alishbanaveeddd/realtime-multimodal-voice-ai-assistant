@@ -139,6 +139,25 @@ class InboundResult:
     seq: int = 0
 
 
+# == M9: minimal conversation state (Part 3/4) ================================
+# Follow-up detection is intentionally a tiny deterministic matcher, not NLU:
+# it only fires while the assistant has just asked "Do you need more
+# information?" (Part 5 voice UX). Anything else is a normal utterance.
+
+#: Phrase whose presence in an answer marks the follow-up offer as pending.
+_FOLLOWUP_OFFER_PHRASE: str = "do you need more information"
+#: Spoken affirmations treated as "give me more about the previous question".
+_AFFIRMATIVE_FOLLOWUPS: frozenset[str] = frozenset({
+    "yes", "yes please", "yeah", "yeah sure", "yep", "yup", "sure", "ok",
+    "okay",
+})
+#: Spoken negatives treated as "stop" — no additional information is generated.
+_NEGATIVE_FOLLOWUPS: frozenset[str] = frozenset({
+    "no", "nope", "no thanks", "no thank you", "that's enough",
+    "thats enough", "i'm good", "im good", "nothing else", "all good",
+})
+
+
 class SessionConnection:
     """Protocol handler for a single WebSocket connection."""
 
@@ -185,6 +204,15 @@ class SessionConnection:
         self._tts_stream: TTSStream | None = None
         self._tts_failed = False
         self._terminal = False
+        # M9: minimal per-connection conversation state (in-memory only; no
+        # external store). Retains just enough context for the spoken UX:
+        # the previous question/answer and whether the assistant just asked
+        # "Do you need more information?".
+        self._prev_question: str | None = None
+        self._prev_answer: str | None = None
+        self._awaiting_followup = False
+        self._in_followup_turn = False
+        self._answer_parts: list[str] = []
 # -- lifecycle -----------------------------------------------------------
     async def on_connect(self) -> str:
         """Create the session, emit ``session.started``, return the session id."""
@@ -371,9 +399,35 @@ class SessionConnection:
         )
 
     # -- LLM stage (M3) ------------------------------------------------------
+    def _build_llm_prompt(self, text: str) -> str | None:
+        """Return the LLM prompt for the finalized transcript ``text``.
+
+        Returns ``None`` when no generation is needed: a negative answer to
+        the pending "Do you need more information?" offer. An affirmative
+        answer only counts as a follow-up while that offer is pending
+        (``self._awaiting_followup``); otherwise it is a normal utterance.
+        """
+        normalized = text.strip().lower().strip(" .,!?")
+        if self._awaiting_followup:
+            if normalized in _NEGATIVE_FOLLOWUPS:
+                return None
+            if normalized in _AFFIRMATIVE_FOLLOWUPS:
+                self._in_followup_turn = True
+                prev_q = self._prev_question or "an earlier question"
+                prev_a = self._prev_answer or "(no previous answer)"
+                return (
+                    f'The user previously asked: "{prev_q}" and you answered: '
+                    f'"{prev_a}" The user now says "yes" to your offer of more '
+                    "information. Provide additional relevant information "
+                    "about that same previous question. Keep it concise for "
+                    "spoken conversation and end with exactly: "
+                    "Do you need more information?"
+                )
+        self._awaiting_followup = False
+        return text
+
     async def _run_llm_stage(self, text: str) -> bool:
         """Generate a response for ``text``; return False on provider error.
-
         Tokens stream out as ``llm.token`` events; failures emit ``llm.error``
         followed by a terminal ``request.error`` (kind ``llm``).
         """
@@ -385,9 +439,27 @@ class SessionConnection:
         logger.info(
             "llm_start session_id=%s request_id=%s", sid, req_id,
         )
+        self._answer_parts = []
+        self._in_followup_turn = False
+        prompt = self._build_llm_prompt(text)
+        if prompt is None:
+            # Negative answer to the "Do you need more information?" offer:
+            # acknowledge briefly through TTS without another LLM generation
+            # (Part 3/5 UX — do not speak forever), then wait for a new question.
+            canned = "Okay."
+            self._answer_parts = [canned]
+            await self._send_text(
+                self._emit(
+                    sid, "llm.token", {"text": canned}, request_id=req_id
+                )
+            )
+            await self._tts_send_segment(canned)
+            self._prev_answer = canned
+            self._awaiting_followup = False
+            return True
         try:
             self._llm_stream = await self._llm.open_stream(
-                text, on_token=self._on_llm_token
+                prompt, on_token=self._on_llm_token
             )
             await _with_timeout(
                 self._llm_stream.wait(),
@@ -429,6 +501,14 @@ class SessionConnection:
         # do not proceed to TTS / completion for the stale request.
         if self._request_id != req_id:
             return False
+        # M9: record the exchange and whether the follow-up offer is pending.
+        answer = "".join(self._answer_parts).strip()
+        if not self._in_followup_turn:
+            self._prev_question = text
+        self._prev_answer = answer or None
+        self._awaiting_followup = (
+            _FOLLOWUP_OFFER_PHRASE in answer.lower()
+        )
         # M4: flush any trailing (unterminated) segment, then finish TTS and
         # wait for all audio before completing the request.
         await self._tts_send_segment(self._segmenter.flush())
@@ -598,6 +678,7 @@ class SessionConnection:
             # The request already reached a terminal state (or TTS failed);
             # keep the event stream clean instead of streaming more tokens.
             return
+        self._answer_parts.append(token)
         if self._latency.llm_first_token_ts is None:
             self._latency.llm_first_token_ts = self._clock()
             logger.info(

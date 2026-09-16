@@ -19,6 +19,7 @@ from assistant.llm.interface import (
 from assistant.llm.openai_adapter import (
     DEFAULT_MODEL,
     GROQ_BASE_URL,
+    SYSTEM_PROMPT,
     OpenAILLMProvider,
 )
 
@@ -114,7 +115,51 @@ async def test_stream_delivers_tokens_in_order_and_posts_contract() -> None:
     body = json.loads(request.content)
     assert body["stream"] is True
     assert body["model"] == DEFAULT_MODEL
-    assert body["messages"] == [{"role": "user", "content": "say hi"}]
+    assert body["messages"] == [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "user", "content": "say hi"},
+    ]
+
+
+def test_system_prompt_text_is_exact() -> None:
+    """Guard against accidental drift of the fixed spoken-assistant persona."""
+    assert SYSTEM_PROMPT == (
+        "You are a concise voice assistant.\n"
+        "Answer the user's actual question directly and accurately.\n"
+        "Normally answer in about 3 to 4 short sentences suitable for spoken "
+        "conversation.\n"
+        "Do not repeat the user's question.\n"
+        "Avoid background information, examples, and long explanations unless "
+        "the user explicitly asks for more detail.\n"
+        "Do not provide additional information merely because it is available.\n"
+        "Do not use markdown, bullet points, or formatting intended for visual "
+        "display.\n"
+        "After answering the user's question, ask exactly: "
+        "Do you need more information?"
+    )
+
+
+async def test_system_message_precedes_user_message() -> None:
+    captured: list[httpx.Request] = []
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=_sse("ok"))
+
+    provider = _provider(_transport(handler, captured))
+    stream = await provider.open_stream(
+        "What is the capital of Pakistan?", on_token=Collector()
+    )
+    await stream.wait()
+    await stream.close()
+
+    messages = json.loads(captured[0].content)["messages"]
+    assert messages[0]["role"] == "system"
+    assert messages[0]["content"] == SYSTEM_PROMPT
+    assert messages[1] == {
+        "role": "user",
+        "content": "What is the capital of Pakistan?",
+    }
+    assert len(messages) == 2
 
 
 async def test_done_and_empty_deltas_are_ignored() -> None:

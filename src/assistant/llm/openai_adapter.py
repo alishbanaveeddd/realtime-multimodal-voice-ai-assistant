@@ -37,6 +37,23 @@ GROQ_BASE_URL_ENV: str = "GROQ_BASE_URL"
 #: Default chat model; overridable via ``GROQ_MODEL`` or constructor.
 DEFAULT_MODEL: str = "openai/gpt-oss-20b"
 
+#: Fixed persona/conciseness instructions prepended to every request so spoken
+#: answers stay brief and free of visual formatting.
+SYSTEM_PROMPT: str = (
+    "You are a concise voice assistant.\n"
+    "Answer the user's actual question directly and accurately.\n"
+    "Normally answer in about 3 to 4 short sentences suitable for spoken "
+    "conversation.\n"
+    "Do not repeat the user's question.\n"
+    "Avoid background information, examples, and long explanations unless the "
+    "user explicitly asks for more detail.\n"
+    "Do not provide additional information merely because it is available.\n"
+    "Do not use markdown, bullet points, or formatting intended for visual "
+    "display.\n"
+    "After answering the user's question, ask exactly: "
+    "Do you need more information?"
+)
+
 _SSE_PREFIX: str = "data: "
 _SSE_DONE: str = "[DONE]"
 
@@ -121,7 +138,10 @@ class OpenAILLMStream(LLMStream):
             json={
                 "model": self._model,
                 "stream": True,
-                "messages": [{"role": "user", "content": self._text}],
+                "messages": [
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": self._text},
+                ],
             },
             headers={"Authorization": f"Bearer {self._api_key}"},
         )
