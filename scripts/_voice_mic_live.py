@@ -99,9 +99,13 @@ def _audio_callback(framer: MicPcmFramer):  # noqa: ANN201 - sd callback
 
 
 async def _send_audio_and_eos(
-    ws: Any, frames: list[bytes], session_id: str
+    ws: Any, frames: list[bytes], session_id: str, seq: int = 1
 ) -> None:
-    """Send capture frames as real-time-paced binary messages, then eos."""
+    """Send capture frames as real-time-paced binary messages, then eos.
+
+    ``seq`` must increase monotonically across audio.eos envelopes on the
+    same connection (the gateway rejects non-monotonic sequences).
+    """
     import time as _time
 
     sent = 0
@@ -115,8 +119,22 @@ async def _send_audio_and_eos(
             await asyncio.sleep(delay)
     await ws.send(json.dumps({
         "type": "audio.eos", "version": "1.0", "session_id": session_id,
-        "request_id": None, "seq": 1, "timestamp": 0.0, "payload": {},
+        "request_id": None, "seq": seq, "timestamp": 0.0, "payload": {},
     }))
+
+
+async def _ensure_session_id(ws: Any, session_id: str | None) -> str:
+    """Return the session id, reading ``session.started`` only on turn one.
+
+    The gateway sends ``session.started`` exactly once per connection, so a
+    follow-up turn must reuse the id captured on the first turn instead of
+    waiting for another ``session.started``.
+    """
+    if session_id is not None:
+        return session_id
+    started = json.loads(await asyncio.wait_for(ws.recv(), timeout=10.0))
+    assert started["type"] == "session.started"
+    return str(started["session_id"])
 
 
 async def _consume_pipeline(ws: Any) -> None:
@@ -154,7 +172,9 @@ async def _consume_pipeline(ws: Any) -> None:
     print("Playback complete.")
 
 
-async def _record_and_respond(ws: Any) -> None:
+async def _record_and_respond(
+    ws: Any, session_id: str | None = None, seq: int = 1
+) -> str:
     """One microphone turn: record, stream, eos, then consume the pipeline."""
     import sounddevice as sd
 
@@ -177,11 +197,10 @@ async def _record_and_respond(ws: Any) -> None:
         await asyncio.to_thread(stop.wait)
     print("Stopped listening.")
     framer.finish()
-    started = json.loads(await asyncio.wait_for(ws.recv(), timeout=10.0))
-    assert started["type"] == "session.started"
-    session_id = started["session_id"]
-    await _send_audio_and_eos(ws, framer.frames, session_id)
+    session_id = await _ensure_session_id(ws, session_id)
+    await _send_audio_and_eos(ws, framer.frames, session_id, seq=seq)
     await _consume_pipeline(ws)
+    return session_id
 
 
 def _wait_healthy(health_url: str, timeout: float = 15.0) -> None:
@@ -227,8 +246,11 @@ def main() -> None:
         # One connection for the whole conversation: the gateway keeps the
         # minimal follow-up state per connection.
         async with websockets.connect(url) as ws:
+            session_id: str | None = None
+            turn = 0
             while True:
-                await _record_and_respond(ws)
+                session_id = await _record_and_respond(ws, session_id, turn + 1)
+                turn += 1
                 again = input("Ask another question? [y/N]: ").strip().lower()
                 if again not in ("y", "yes"):
                     break
