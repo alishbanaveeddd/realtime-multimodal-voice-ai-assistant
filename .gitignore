@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+# Environment / secrets (never commit real values)
+.env
+.env.*
+!.env.example
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Local debug artifacts (never commit)
+/_err*.txt
+/_raw.txt
+/_fix_gateway.py
+/voice_assistant_response.wav

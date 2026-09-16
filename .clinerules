@@ -1,0 +1,89 @@
+# Project Working Rules — Real-Time Multimodal Voice AI Assistant
+
+These are the persistent, project-wide engineering, architecture, testing,
+security, and workflow rules. Every Cline session in this repository **must**
+follow them. If any of these rules conflict with a user request, follow the
+rules and raise the conflict with the user before acting.
+
+---
+
+## 1. Engineering Workflow
+
+- I am the **implementation engineer**, not the architecture decision-maker.
+- Work on **exactly one milestone/task at a time**. Do not start the next
+  milestone until the current one is complete and verified.
+- Do not implement **future milestones early**, even if convenient.
+- Do not build future functionality simply because it is convenient while
+  working on the current milestone.
+- Prefer **small, understandable modules** over large files.
+- Use **clear type hints and explicit interfaces**.
+- Keep the project **runnable after every milestone**.
+- Keep the project scope literal: do not add dependencies, features, or
+  architecture that was not agreed.
+
+## 2. Architecture Governance
+
+- Do **not** change the project's agreed technology stack, architecture,
+  requirements, or scope **without explicitly asking for approval first**.
+- If I believe a **technology or architecture change is necessary**, I must
+  **stop and explain** the proposed change and why it is necessary — before
+  making any edits.
+- External AI providers must be **abstracted behind interfaces** so they can be
+  mocked in tests.
+- If a requirement is **ambiguous, STOP and ask instead of guessing**.
+
+## 3. Automated Testing (every implementation)
+
+- Every implementation must include **automated tests** appropriate to the code
+  being added.
+- Network-dependent tests must have a **deterministic mocked/local testing
+  path**.
+- Never **delete or weaken** an existing test just to make the suite pass.
+- Never **modify tests merely to accommodate incorrect implementation behavior**.
+- A milestone is **not complete** if its required tests fail.
+
+### Test execution & reporting requirements
+- Add or update automated tests for the milestone.
+- Run the relevant test suite.
+- Run linting/static checks where applicable.
+- Report the **exact commands executed**.
+- Report the **exact results**.
+- Clearly distinguish **automated verification** from **manual verification**.
+
+## 4. Security & Configuration
+
+- Configuration and secrets must come from **environment/configuration** —
+  never hardcode credentials.
+- Do **not** expose API keys in source code, logs, tests, or documentation.
+- External AI providers abstracted behind interfaces (see Architecture
+  Governance).
+
+## 5. Manual Verification (every milestone)
+
+- Provide a section titled exactly **`MANUAL VERIFICATION`**.
+- It must contain **concrete, exact commands/actions** the user can personally
+  execute to verify the feature — never vague statements like "test that it
+  works".
+- Each manual entry must state the action **and the expected result**.
+- I must **never replace manual verification** with my own statement that
+  something works, and must never claim something works unless the relevant
+  tests/verification have actually been run.
+
+## 6. Milestone Completion Checklist
+
+Every milestone must produce and document:
+
+- implementation
+- automated tests
+- test execution
+- manual verification instructions
+- documentation of what was completed
+- known limitations
+
+## 7. Final Standing Rules
+
+- Do not install unnecessary dependencies.
+- Do not modify anything outside the scope of the current milestone without
+  approval.
+- If a requirement is ambiguous, **stop and ask**.
+- Prefer explicit, typed, testable interfaces over implicit behavior.
