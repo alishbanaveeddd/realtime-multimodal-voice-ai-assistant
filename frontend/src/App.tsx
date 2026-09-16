@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { MysaClient } from "./lib/mysaClient";
-import { MysaOrb, type OrbPhase } from "./orb/MysaOrb";
+import { MysaOrb, type OrbPhase } from "./orb/HoloOrb";
 import { Conversation } from "./components/Conversation";
 import { Pipeline } from "./components/Pipeline";
 import { StatusPanel } from "./components/StatusPanel";
