@@ -1,0 +1,329 @@
+/*
+ * VoiceOrb styles — layered CSS-only 3D orb.
+ * Every dimension scales from --zy-orb-size; colors come only from the
+ * theme tokens (--chart-1..5, --primary) via the --zy-orb-hue-* aliases.
+ */
+
+.zy-orb-root {
+  --zy-orb-level: 0;
+  --zy-orb-size: 112px;
+  --zy-orb-reach: 1;
+  --zy-orb-speed: 1;
+  --zy-orb-hue-a: var(--chart-1);
+  --zy-orb-hue-b: var(--chart-2);
+  --zy-orb-hue-c: var(--chart-4);
+  --zy-orb-core: var(--primary);
+  position: relative;
+  width: var(--zy-orb-size);
+  height: var(--zy-orb-size);
+  display: inline-block;
+  flex: none;
+}
+.zy-orb-root .zy-orb-amp {
+  width: 100%;
+  height: 100%;
+  transform: scale(calc(1 + 0.07 * var(--zy-orb-level)));
+}
+.zy-orb-stage {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  animation: zy-breathe calc(5.4s / var(--zy-orb-speed)) ease-in-out infinite;
+  transition: opacity 400ms ease, filter 400ms ease;
+}
+.zy-orb-layer {
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+/* -- layered construction -------------------------------------------------- */
+.zy-orb-glow {
+  inset: calc(-34% * var(--zy-orb-reach));
+  background: radial-gradient(
+    circle,
+    color-mix(in oklab, var(--zy-orb-core) 52%, transparent) 0%,
+    color-mix(in oklab, var(--zy-orb-hue-b) 26%, transparent) 42%,
+    transparent 70%
+  );
+  filter: blur(calc(var(--zy-orb-size) * 0.1));
+  animation: zy-glow-drift calc(11s / var(--zy-orb-speed)) ease-in-out infinite;
+  opacity: 0.8;
+}
+.zy-orb-vol { filter: blur(calc(var(--zy-orb-size) * 0.07)); opacity: 0.85; }
+.zy-orb-vol1 {
+  inset: 4%;
+  background: radial-gradient(
+    circle at 38% 32%,
+    color-mix(in oklab, var(--zy-orb-hue-a) 85%, white) 0%,
+    color-mix(in oklab, var(--zy-orb-hue-a) 55%, transparent) 55%,
+    transparent 78%
+  );
+  animation: zy-drift-a calc(13s / var(--zy-orb-speed)) ease-in-out infinite;
+}
+.zy-orb-vol2 {
+  inset: 8%;
+  background: radial-gradient(
+    circle at 62% 60%,
+    color-mix(in oklab, var(--zy-orb-hue-b) 80%, transparent) 0%,
+    color-mix(in oklab, var(--zy-orb-hue-b) 45%, transparent) 58%,
+    transparent 80%
+  );
+  animation: zy-drift-b calc(17s / var(--zy-orb-speed)) ease-in-out infinite;
+}
+.zy-orb-vol3 {
+  inset: 2%;
+  background: radial-gradient(
+    circle at 55% 74%,
+    color-mix(in oklab, var(--zy-orb-hue-c) 60%, transparent) 0%,
+    transparent 62%
+  );
+  animation: zy-drift-c calc(21s / var(--zy-orb-speed)) ease-in-out infinite;
+}
+.zy-orb-core {
+  inset: 16%;
+  background: radial-gradient(
+    circle at 44% 40%,
+    color-mix(in oklab, var(--zy-orb-core) 78%, white) 0%,
+    var(--zy-orb-core) 42%,
+    color-mix(in oklab, var(--zy-orb-hue-b) 82%, black) 100%
+  );
+  filter: blur(calc(var(--zy-orb-size) * 0.03));
+  animation: zy-core-pulse calc(5.4s / var(--zy-orb-speed)) ease-in-out infinite;
+}
+.zy-orb-highlight {
+  inset: 10%;
+  background: radial-gradient(
+    ellipse 46% 32% at 33% 24%,
+    rgba(255, 255, 255, 0.85) 0%,
+    transparent 100%
+  );
+  mix-blend-mode: screen;
+  animation: zy-highlight-drift calc(8.5s / var(--zy-orb-speed)) ease-in-out infinite;
+}
+.zy-orb-rim {
+  inset: 0;
+  border: 1.5px solid color-mix(in oklab, var(--zy-orb-hue-b) 62%, white);
+  box-shadow:
+    inset 0 0 calc(var(--zy-orb-size) * 0.06)
+      color-mix(in oklab, var(--zy-orb-hue-b) 45%, transparent),
+    0 0 calc(var(--zy-orb-size) * 0.045 * var(--zy-orb-reach))
+      color-mix(in oklab, var(--zy-orb-hue-a) 40%, transparent);
+
+/* -- thinking: swirl + comet (abstract motion, never a progress claim) ------ */
+.zy-orb-swirl {
+  inset: 6%;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0%,
+    color-mix(in oklab, var(--zy-orb-hue-b) 42%, transparent) 18%,
+    transparent 34%,
+    color-mix(in oklab, var(--zy-orb-hue-c) 34%, transparent) 58%,
+    transparent 76%,
+    color-mix(in oklab, var(--zy-orb-hue-a) 30%, transparent) 92%,
+    transparent 100%
+  );
+  mix-blend-mode: screen;
+  opacity: 0;
+  animation: zy-spin calc(9s / var(--zy-orb-speed)) linear infinite;
+}
+.zy-orb-orbit { inset: 4%; overflow: hidden; }
+.zy-orb-comet {
+  left: 8%;
+  top: 46%;
+  width: 12%;
+  height: 12%;
+  background: radial-gradient(
+    circle,
+    color-mix(in oklab, white 62%, var(--zy-orb-hue-b)) 0%,
+    color-mix(in oklab, var(--zy-orb-hue-b) 55%, transparent) 55%,
+    transparent 100%
+  );
+  filter: blur(calc(var(--zy-orb-size) * 0.02));
+  transform-origin: calc(var(--zy-orb-size) * 0.42) 50%;
+  animation: zy-comet calc(6s / var(--zy-orb-speed)) linear infinite;
+}
+
+/* -- listening rings (amplitude drives their strength via --zy-orb-level) --- */
+.zy-orb-ring {
+  inset: 0;
+  border: 2px solid color-mix(in oklab, var(--zy-orb-hue-c) 55%, transparent);
+  opacity: 0;
+}
+.zy-orb-ring1 { animation: zy-ring calc(2.8s / var(--zy-orb-speed)) ease-out infinite; }
+.zy-orb-ring2 { animation: zy-ring calc(3.5s / var(--zy-orb-speed)) ease-out infinite; animation-delay: 0.9s; }
+.zy-orb-ring3 { animation: zy-ring calc(4.3s / var(--zy-orb-speed)) ease-out infinite; animation-delay: 1.8s; }
+
+/* -- speaking halo: two glow layers on offset beats -------------------------- */
+.zy-orb-halo1, .zy-orb-halo2 { inset: calc(-12% * var(--zy-orb-reach)); opacity: 0; }
+.zy-orb-halo1 {
+  background: radial-gradient(
+    circle,
+    color-mix(in oklab, var(--zy-orb-hue-a) 34%, transparent) 55%,
+    transparent 74%
+  );
+  filter: blur(calc(var(--zy-orb-size) * 0.06));
+  animation: zy-halo-beat calc(3.4s / var(--zy-orb-speed)) ease-in-out infinite;
+}
+.zy-orb-halo2 {
+  background: radial-gradient(
+    circle,
+    color-mix(in oklab, var(--zy-orb-hue-b) 26%, transparent) 60%,
+    transparent 78%
+  );
+  filter: blur(calc(var(--zy-orb-size) * 0.09));
+}
+
+/* -- state moods: same orb, evolving ----------------------------------------- */
+.zy-orb-root[data-state="idle"] .zy-orb-swirl,
+.zy-orb-root[data-state="idle"] .zy-orb-comet,
+.zy-orb-root[data-state="idle"] .zy-orb-orbit,
+.zy-orb-root[data-state="idle"] .zy-orb-ring,
+.zy-orb-root[data-state="idle"] .zy-orb-halo1,
+.zy-orb-root[data-state="idle"] .zy-orb-halo2,
+.zy-orb-root[data-state="thinking"] .zy-orb-ring,
+.zy-orb-root[data-state="thinking"] .zy-orb-halo1,
+.zy-orb-root[data-state="thinking"] .zy-orb-halo2,
+.zy-orb-root[data-state="speaking"] .zy-orb-swirl,
+.zy-orb-root[data-state="speaking"] .zy-orb-comet,
+.zy-orb-root[data-state="speaking"] .zy-orb-orbit,
+.zy-orb-root[data-state="speaking"] .zy-orb-ring,
+.zy-orb-root[data-state="muted"] .zy-orb-swirl,
+.zy-orb-root[data-state="muted"] .zy-orb-comet,
+.zy-orb-root[data-state="muted"] .zy-orb-orbit,
+.zy-orb-root[data-state="muted"] .zy-orb-ring,
+.zy-orb-root[data-state="muted"] .zy-orb-halo1,
+.zy-orb-root[data-state="muted"] .zy-orb-halo2 { display: none; }
+.zy-orb-root[data-state="listening"] .zy-orb-swirl,
+.zy-orb-root[data-state="listening"] .zy-orb-comet,
+.zy-orb-root[data-state="listening"] .zy-orb-orbit { display: none; }
+.zy-orb-root[data-state="listening"] { --zy-orb-hue-a: color-mix(in oklab, var(--chart-3) 55%, var(--chart-1)); }
+.zy-orb-root[data-state="thinking"] { --zy-orb-hue-a: color-mix(in oklab, var(--chart-5) 45%, var(--chart-1)); }
+.zy-orb-root[data-state="speaking"] { --zy-orb-hue-a: color-mix(in oklab, var(--chart-5) 55%, var(--chart-1)); }
+
+/* -- intensity ---------------------------------------------------------------- */
+.zy-orb-root[data-intensity="subtle"] .zy-orb-glow { opacity: 0.45; }
+.zy-orb-root[data-intensity="medium"] .zy-orb-glow { opacity: 0.7; }
+.zy-orb-root[data-intensity="bold"] .zy-orb-glow { opacity: 1; }
+
+/* -- muted: frozen, dimmed, desaturated (frozen, not deleted) ----------------- */
+.zy-orb-root[data-state="muted"] .zy-orb-stage {
+  opacity: 0.55;
+  filter: grayscale(0.9);
+}
+
+/* -- label --------------------------------------------------------------------- */
+.zy-orb-label {
+  margin-top: 10px;
+  text-align: center;
+  font-size: 12.5px;
+  letter-spacing: 0.08em;
+  color: var(--ink-soft, #8a7f92);
+}
+.zy-orb-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* -- reduced motion: orb stays visible, motion stops, label becomes visible ---- */
+@media (prefers-reduced-motion: reduce) {
+  .zy-orb-root,
+  .zy-orb-root * {
+    animation: none !important;
+    transition: none !important;
+  }
+  .zy-orb-root .zy-orb-sr {
+    position: static;
+    width: auto;
+    height: auto;
+    margin: 0;
+    overflow: visible;
+    clip: auto;
+    white-space: normal;
+  }
+}
+
+/* -- keyframes ------------------------------------------------------------------- */
+@keyframes zy-breathe {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.045); }
+}
+@keyframes zy-glow-drift {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  50% { transform: translate3d(-3%, 2%, 0) scale(1.06); }
+}
+@keyframes zy-drift-a {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(-4%, 3%) scale(1.08); }
+}
+@keyframes zy-drift-b {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(4%, -3%) scale(1.05); }
+}
+@keyframes zy-drift-c {
+  0%, 100% { transform: translate(0, 0); }
+  50% { transform: translate(-2%, -4%); }
+}
+@keyframes zy-core-pulse {
+  0%, 100% { transform: scale(1); opacity: 0.92; }
+  50% { transform: scale(1.06); opacity: 1; }
+}
+@keyframes zy-highlight-drift {
+  0%, 100% { transform: translate(0, 0); }
+  50% { transform: translate(5%, 4%); }
+}
+@keyframes zy-rim-breathe {
+  0%, 100% { opacity: 0.8; }
+  50% { opacity: 1; }
+}
+@keyframes zy-spin {
+  to { transform: rotate(360deg); }
+}
+@keyframes zy-comet {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+@keyframes zy-ring {
+  0% { transform: scale(1); opacity: calc(0.12 + 0.55 * var(--zy-orb-level)); }
+  100% { transform: scale(calc(1 + 0.55 * var(--zy-orb-reach))); opacity: 0; }
+}
+@keyframes zy-halo-beat {
+  0%, 100% { transform: scale(1); opacity: calc(0.1 + 0.35 * var(--zy-orb-level)); }
+  50% { transform: scale(calc(1 + 0.14 * var(--zy-orb-reach))); opacity: calc(0.16 + 0.55 * var(--zy-orb-level)); }
+}
+
+.zy-orb-ring {
+  inset: -12%;
+  background: radial-gradient(
+    circle,
+    color-mix(in oklab, var(--zy-orb-hue-b) 70%, transparent) 0%,
+    transparent 70%
+  );
+  filter: blur(calc(var(--zy-orb-size) * 0.05));
+}
+.zy-orb-ring1 { animation: zy-ring calc(1.4s / var(--zy-orb-speed)) ease-out infinite; }
+.zy-orb-ring2 { animation: zy-ring calc(1.4s / var(--zy-orb-speed)) ease-out infinite; animation-delay: 0.35s; }
+.zy-orb-ring3 { animation: zy-ring calc(1.4s / var(--zy-orb-speed)) ease-out infinite; animation-delay: 0.75s; }
+
+.zy-orb-halo1,
+.zy-orb-halo2 {
+  inset: -8%;
+  background: radial-gradient(
+    circle,
+    color-mix(in oklab, var(--zy-orb-hue-c) 55%, transparent) 0%,
+    transparent 68%
+  );
+  filter: blur(calc(var(--zy-orb-size) * 0.12));
+  animation: zy-halo-beat calc(4.7s / var(--zy-orb-speed)) ease-in-out infinite;
+  animation-delay: 1.2s;
+}
+.zy-orb-halo2 { animation-delay: 1.85s; }
+
+.zy-orb-rim {
+  animation: zy-rim-breathe calc(6.5s / var(--zy-orb-speed)) ease-in-out infinite;
+}
