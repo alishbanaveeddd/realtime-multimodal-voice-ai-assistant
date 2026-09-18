@@ -214,6 +214,10 @@ parsing, and state-machine transitions without a browser or a running server.
   provider cannot stall a request.
 - **Minimal state** — conversation memory is a handful of fields per connection;
   no external state store.
+# Screenshots of UI :
+<img width="768" height="810" alt="image" src="https://github.com/user-attachments/assets/4d079c9c-73b0-41a2-ba54-ee64ef7ab1a8" />
+
+<img width="1459" height="859" alt="image" src="https://github.com/user-attachments/assets/d266a4cd-54d2-4605-abaa-71aa833b464b" />
 
 ## License
 
