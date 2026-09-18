@@ -52,13 +52,14 @@ Browser / speaker playback + latency metrics (TTFT, TTFB, total)
 
 ```
 frontend/                      # MYSA web client (React + TypeScript + Three.js)
-├── src/App.tsx               # screen composition: orb, status, mic, conversation
-├── src/orb/MysaOrb.ts        # Three.js holographic orb + state animations
+├── src/App.tsx               # screen composition: orb + status + mic + conversation
+├── src/components/           # VoiceOrb, Conversation, Pipeline, StatusPanel
+├── src/orb/                  # HoloOrb (Three.js) + orbState + orbShaders
 ├── src/lib/mysaClient.ts     # WebSocket client + real application state
 ├── src/lib/protocol.ts       # event envelope parsing (shared contract types)
 ├── src/lib/mic.ts            # browser mic capture → PCM16/16 kHz/mono framing
 ├── src/lib/playback.ts       # Web Audio playback of streamed TTS audio
-└── src/components/           # Conversation, Pipeline, StatusPanel
+└── src/styles.css            # global styles
 src/assistant/
 ├── asr/           # ASR interface, Deepgram adapter, deterministic fake, audio contract
 ├── llm/           # LLM interface, Groq (OpenAI-compatible) adapter, fake, factory
@@ -79,19 +80,90 @@ tests/                       # 214 deterministic offline tests
 key is present, otherwise a deterministic fake — so the app always runs, and tests
 never touch the network.
 
+## Frontend — MYSA web client
+
+The browser client is a single-page React + TypeScript app with a Three.js holographic
+orb. It connects to the existing backend over one WebSocket and reflects **real pipeline
+state only** — never simulated text, never fake events.
+
+### How it fits together
+
+```
+Browser
+  │
+  ├── src/App.tsx              orchestrates the screen
+  │     │
+  │     ├── src/components/VoiceOrb.tsx   CSS 3D orb, amplitude-driven
+  │     ├── src/components/Conversation.tsx  transcript log
+  │     ├── src/components/Pipeline.tsx     stage indicators
+  │     └── src/components/StatusPanel.tsx  connected / phase / error
+  │
+  ├── src/orb/                 Three.js holographic orb (alternative visual layer)
+  │     ├── HoloOrb.ts         MysaOrb: WebGL renderer + noise shaders + dust
+  │     ├── orbState.ts        pure, testable state→uniform model
+  │     └── orbShaders.ts      vertex/fragment/dust GLSL
+  │
+  └── src/lib/
+        ├── mysaClient.ts      single WebSocket connection + real app state
+        ├── protocol.ts        event envelope contract → UI state reducer
+        ├── mic.ts             browser mic → PCM16/16 kHz/mono framing
+        └── playback.ts        Web Audio TTS playback + level analyser
+```
+
+### Data flow (one conversation turn)
+
+1. **Connection.** `MysaClient` opens `ws://host/ws` (or `wss:` on HTTPS) and listens
+   for `session.started`. The `StatusPanel` shows *connected* and the orb settles into
+   its idle character.
+
+2. **Capture.** On "Push to talk" the frontend calls `startTurn()`. `MicCapture` grabs
+   the mic via `getUserMedia`, runs an `AudioContext` with an `AnalyserNode` for live
+   amplitude, and a `ScriptProcessorNode` that resamples whatever the hardware gives
+   (usually 44.1/48 kHz Float32) down to **16 kHz mono**, quantizes to **PCM16 LE**,
+   and frames it into **320-byte / 10 ms** messages. Every frame is sent as a binary
+   WebSocket message.
+
+3. **Streaming in.** Backend events arrive as JSON envelopes (`transcript.partial`,
+   `transcript.final`, `llm.token`, `tts.done`, `metrics`, `request.completed`,
+   `request.error`, …). The pure reducer in `protocol.ts` turns each envelope into the
+   next `MysaState` — phase, recording flag, partial transcript, message log, stage
+   statuses, metrics, error. `MysaClient` emits the new state to every listener.
+
+4. **Streaming out.** TTS audio comes back as **binary PCM16/16 kHz/mono** frames on the
+   same WebSocket. `TtsPlayer` schedules each chunk on a single 16 kHz `AudioContext` in
+   order with no gaps, so Mysa's voice plays exactly as synthesized. An `AnalyserNode`
+   after the gain stage gives the real playback level that drives the orb's "speaking"
+   animation — nothing is faked.
+
+5. **Visual state.** The orb is the visual anchor. Two implementations exist:
+   - **`VoiceOrb`** (`src/components/VoiceOrb.tsx`) — a pure HTML/CSS 3D orb built from
+     layered gradient volumes (atmospheric glow, three drifting colour volumes, a central
+     core, a glass highlight, a hairline rim, and state-specific effects). No canvas, no
+     SVG, no animation library. Amplitude is written to a `--zy-orb-level` CSS variable
+     from one `requestAnimationFrame` loop running an envelope follower (attack ≈ 70 ms,
+     release ≈ 260 ms, noise gate 0.02), so per-frame animation never touches React state.
+   - **`HoloOrb`** (`src/orb/HoloOrb.ts`) — a Three.js holographic orb: deformed soft
+     sphere, fractal-noise surface ripple, thin-film iridescence (cyan/magenta/peach),
+     dark-magenta striations, color-fringed edges, and floating dust motes. Every animation
+     parameter is resolved by the pure `orbState` module and eased each frame.
+
+   Both read the same real amplitude sources: microphone level while listening, playback
+   level while speaking, and zero otherwise — so silence really does mean stillness.
+
+6. **Conversation log.** `Conversation` shows the message history built from
+   `transcript.final` (user turns) and `llm.token` + `tts.done` (Mysa turns). Tokens
+   stream in live as `llm.token` events arrive, so the answer types out as it is generated.
+
+7. **Pipeline indicator.** `Pipeline` renders each stage (`microphone`, `deepgram`, `groq`,
+   `segmenter`, `elevenlabs`, `speaker`) as idle / active / done, so the user can see
+   exactly where the request is.
+
+8. **Completion.** `request.completed` returns the UI to idle; if TTS is still playing,
+   `MysaClient` holds the phase on `speaking` until the scheduled audio finishes, then
+   transitions to idle. Errors (`request.error`, `llm.error`, `error`) push the phase to
+   `error` and surface the message in `StatusPanel`.
+
 ## Event contract (WebSocket `/ws`)
-
-Binary messages are PCM16/16 kHz/mono audio. Text messages are JSON envelopes:
-
-| Direction | Event | Purpose |
-|---|---|---|
-| → | `session.started` | emitted on connect |
-| ← | binary audio frames | PCM16/16 kHz/mono mic audio |
-| ← | `audio.eos` | end of utterance |
-| → | `request.started` / `transcript.partial` / `transcript.final` | ASR results |
-| → | `llm.token` | streamed LLM tokens |
-| → | binary audio frames | synthesized TTS audio (PCM16/16 kHz/mono) |
-| → | `tts.done` / `metrics` / `request.completed` | completion + latency |
 | → | `request.error` / `llm.error` / `request.canceled` / `error` | failures |
 
 ## Quick start
@@ -114,11 +186,27 @@ copy .env.example .env   # then fill in the real values
 |---|---|---|
 | `DEEPGRAM_API_KEY` | ASR | real transcription |
 | `GROQ_API_KEY` | LLM | real generation (Groq, OpenAI-compatible endpoint) |
+| `GROQ_BASE_URL` *(optional)* | LLM | point the OpenAI-compatible adapter at another compatible endpoint (default `https://api.groq.com/openai/v1`) |
 | `GROQ_MODEL` *(optional)* | LLM | model override (default `openai/gpt-oss-20b`) |
 | `ELEVENLABS_API_KEY` | TTS | real synthesis |
 | `ELEVENLABS_VOICE_ID` | TTS | voice selection |
 
-Without any key the pipeline runs with deterministic fakes — useful for development.
+The entrypoint scripts (`scripts/run_server.py`, `scripts/_smoke_e2e_live.py`,
+`scripts/_voice_mic_live.py`) load the local `.env` into the environment before
+the provider factories run, so the `.env` you created above actually selects the
+real providers. A variable already exported in your shell always wins over the
+file. The loader never prints or logs values — only the names it loaded.
+
+To confirm which providers are actually active (never prints keys):
+
+```powershell
+.venv\Scripts\python -c "from assistant.config.env_file import load_env_file as e; e(); from assistant.asr.factory import build_asr_provider as a; from assistant.llm.factory import build_llm_provider as l; from assistant.tts.factory import build_tts_provider as t; print(type(a()).__name__, type(l()).__name__, type(t()).__name__)"
+```
+
+Without any key the pipeline runs with deterministic fakes — useful for
+development. Any provider that has no credential falls back to its fake
+*individually*, so `DeepgramASRProvider FakeLLMProvider ElevenLabsTTSProvider`
+means the LLM key is the missing one.
 
 ## Using the assistant
 
@@ -185,7 +273,7 @@ back through your speakers. Ask follow-ups in the same session:
 Backend (Python):
 
 ```powershell
-.venv\Scripts\python -m pytest -q                        # 214 deterministic tests
+.venv\Scripts\python -m pytest -q                        # 231 deterministic tests
 .venv\Scripts\python -m ruff check src scripts tests     # lint
 .venv\Scripts\python -m mypy                             # strict type check
 ```
@@ -194,13 +282,16 @@ Frontend (TypeScript):
 
 ```powershell
 cd frontend
-npm test          # 24 Vitest tests (protocol parsing, mic framing, client state)
+npm test          # 40 Vitest tests (protocol parsing, mic framing, client state, orb)
 npm run build     # tsc --noEmit + vite build
 ```
 
 All provider interactions in tests are fake; no test requires credentials or network.
 The frontend tests cover the PCM16/16 kHz/mono conversion, frame sizing, event
-parsing, and state-machine transitions without a browser or a running server.
+parsing, state-machine transitions, the orb's state→uniform wiring, and a static
+GLSL contract check on the orb shaders — all without a browser or a running server.
+Credentials are also covered on the backend: a configured key can never reach a
+client-facing error message (`tests/test_credential_redaction.py`).
 
 ## Design principles
 
@@ -214,10 +305,19 @@ parsing, and state-machine transitions without a browser or a running server.
   provider cannot stall a request.
 - **Minimal state** — conversation memory is a handful of fields per connection;
   no external state store.
-# Screenshots of UI :
-<img width="768" height="810" alt="image" src="https://github.com/user-attachments/assets/4d079c9c-73b0-41a2-ba54-ee64ef7ab1a8" />
+## Screenshots
 
-<img width="1459" height="859" alt="image" src="https://github.com/user-attachments/assets/d266a4cd-54d2-4605-abaa-71aa833b464b" />
+### MYSA web client — main screen
+
+The holographic orb centered on the stage, with the *"How can I help?"* hero, the live waveform, the mic button, and the partial-transcript hint below it.
+
+<img width="768" height="810" alt="MYSA main screen: holographic orb, hero text, waveform, and mic button" src="https://github.com/user-attachments/assets/4d079c9c-73b0-41a2-ba54-ee64ef7ab1a8" />
+
+### MYSA web client — full layout
+
+The full lower panel open: conversation log, pipeline stages (Microphone → Deepgram → Groq → Text Segmenter → ElevenLabs → Speaker), the system status panel, and live latency metrics (TTFT, TTFB, total).
+
+<img width="1459" height="859" alt="MYSA full layout: conversation log, pipeline stages, system status, and latency metrics" src="https://github.com/user-attachments/assets/d266a4cd-54d2-4605-abaa-71aa833b464b" />
 
 ## License
 
